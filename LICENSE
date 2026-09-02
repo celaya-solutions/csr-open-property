@@ -46,6 +46,8 @@ Every fork, modification, deployment, and distribution must retain the words “
 2. in the existing user-facing CSR brand label, footer, About screen, or equivalent interface location; and
 3. in source and distribution notices.
 
+If the software has no user-facing interface, the repository README and primary package documentation satisfy item 2.
+
 You may add your own name or a “Modified by” notice, but it must be visually subordinate to the required CSR branding. You may not remove, hide, obscure, replace, or misrepresent the required CSR branding, Celaya Solutions copyright notice, website, or contact information.
 
 This branding condition does not grant permission to use any Celaya Solutions name, logo, or mark to advertise unrelated goods or services or to suggest sponsorship or endorsement.
@@ -77,4 +79,3 @@ TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED “AS IS,” WI
 “Commercial advantage” includes revenue, compensation, cost avoidance in ordinary business operations, lead generation, customer acquisition, or a material benefit to a for-profit activity.
 
 “You” means the individual or entity agreeing to these terms. “Your organization” includes entities you control, that control you, or that are under common control with you.
-
