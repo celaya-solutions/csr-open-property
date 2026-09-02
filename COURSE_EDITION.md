@@ -49,4 +49,4 @@ Custom domains are optional. Connect a Namecheap domain to Vercel; Vercel contin
 - https://www.celayasolutions.com
 - (915) 755-5705
 
-See `UPSTREAM.md` and the preserved license before sharing.
+Forks and modifications are welcome for noncommercial use. Keep the Celaya Solutions Research Course Edition branding and follow `LICENSE`.

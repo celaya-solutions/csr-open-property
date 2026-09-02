@@ -41,6 +41,7 @@ no API key, $0).
 <!-- graft:end -->
 ## Course edition change log
 
+- Relicensed Celaya-owned code under the CSR Noncommercial License 1.0, made the required CSR mark visible in the app, and removed the old import record.
 - Ignored Vercel's local project-link folder after the staging release.
 - Normalized pnpm's trusted build-dependency list so clean Vercel and Railway installs parse it correctly.
 - Added the Railway IaC SDK required to review and apply the checked-in project plan.
