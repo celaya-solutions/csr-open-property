@@ -56,7 +56,10 @@ export function Sidebar({
         <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <Home className="h-4 w-4" />
         </div>
-        <span className="text-base font-semibold tracking-tight">OpenProperty</span>
+        <div className="min-w-0">
+          <span className="block text-base font-semibold tracking-tight">OpenProperty</span>
+          <span className="block text-[9px] leading-tight text-muted-foreground">Celaya Solutions Research Course Edition</span>
+        </div>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-3">

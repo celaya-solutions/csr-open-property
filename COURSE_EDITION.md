@@ -42,6 +42,10 @@ Hosting offers change. As recorded on September 1, 2026, Vercel Hobby documents 
 
 Custom domains are optional. Connect a Namecheap domain to Vercel; Vercel continues routing `/api` to Railway.
 
+## Course use
+
+This edition is maintained for a free, noncommercial course of fewer than ten learners. The course policy applies to CSR-authored course guides and branding; it does not replace the imported software license or copyright notices. Keep the visible “Celaya Solutions Research Course Edition” notice when using the CSR course material.
+
 ## Celaya Solutions
 
 - Research Course Edition
