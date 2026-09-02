@@ -41,4 +41,5 @@ no API key, $0).
 <!-- graft:end -->
 ## Course edition change log
 
+- Replaced the temporary service TOML with reviewed Railway project IaC for the API and persistent course-data volume.
 - Added the Node 22 Hono API, persistent SQLite, password session, local upload support, and Railway and Vercel course guides. Build, typecheck, API smoke, and restart persistence checks pass.
