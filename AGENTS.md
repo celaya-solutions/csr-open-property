@@ -41,6 +41,7 @@ no API key, $0).
 <!-- graft:end -->
 ## Course edition change log
 
+- Ignored Vercel's local project-link folder after the staging release.
 - Normalized pnpm's trusted build-dependency list so clean Vercel and Railway installs parse it correctly.
 - Added the Railway IaC SDK required to review and apply the checked-in project plan.
 - Replaced the temporary service TOML with reviewed Railway project IaC for the API and persistent course-data volume.
