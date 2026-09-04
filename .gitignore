@@ -9,3 +9,7 @@ dist
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 graft/
 .vercel
+
+# Local run state: the class password file and the SQLite database.
+.env
+data/

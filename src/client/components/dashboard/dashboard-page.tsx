@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   Building2,
   CheckCircle2,
@@ -9,34 +8,16 @@ import {
   Wrench,
 } from "lucide-react";
 import { useApp } from "@/context";
-import { api } from "@/api";
+import { useDashboard } from "@/hooks/queries";
 import { cn, daysBetween, formatDate, formatMoney, toIsoDate } from "@/lib/utils";
-import type { DashboardSummary } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 
 export function DashboardPage({ navigate }: { navigate: (to: string) => void }) {
-  const { settings, setError } = useApp();
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { settings } = useApp();
+  const { data: summary, isPending } = useDashboard();
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoading(true);
-        const data = await api<DashboardSummary>("GET", "/api/dashboard/summary");
-        if (!cancelled) setSummary(data);
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [setError]);
-
-  if (loading || !summary) {
+  if (isPending || !summary) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
         Loading dashboard…

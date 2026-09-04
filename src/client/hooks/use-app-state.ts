@@ -1,20 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
-import { api } from "../api";
+import { useCallback, useMemo, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { InferRequestType, InferResponseType } from "hono/client";
+import { rpc, unwrap } from "@/lib/rpc";
+import { invalidateAll, keys, useProperties, useSettingsQuery, useVendors } from "./queries";
 import type {
-  Property,
-  Unit,
-  Tenant,
-  Lease,
-  RentCharge,
-  Vendor,
-  WorkOrder,
-  NewProperty,
-  NewUnit,
-  NewTenant,
-  NewLease,
-  NewWorkOrder,
-  NewVendor,
-} from "../types";
+  Lease, NewLease, NewProperty, NewTenant, NewUnit, NewVendor, NewWorkOrder,
+  Property, RentCharge, Tenant, Unit, Vendor, WorkOrder,
+} from "@/types";
 
 export interface AppSettings {
   default_rent_due_day: number;
@@ -43,234 +35,190 @@ function parseSettings(raw: Record<string, string>): AppSettings {
   };
 }
 
+// Body types come from the server's Zod schemas by way of the RPC client.
+type PropertyBody = InferRequestType<typeof rpc.api.properties.$post>["json"];
+type UnitBody = InferRequestType<typeof rpc.api.units.$post>["json"];
+type TenantBody = InferRequestType<typeof rpc.api.tenants.$post>["json"];
+type LeaseBody = InferRequestType<typeof rpc.api.leases.$post>["json"];
+type VendorBody = InferRequestType<typeof rpc.api.vendors.$post>["json"];
+type WorkOrderBody = InferRequestType<(typeof rpc.api)["work-orders"]["$post"]>["json"];
+type PaymentBody = InferRequestType<typeof rpc.api.payments.$post>["json"];
+
+type CreatedProperty = InferResponseType<typeof rpc.api.properties.$post, 201>;
+type UpdatedProperty = InferResponseType<(typeof rpc.api.properties)[":id"]["$put"], 200>;
+type CreatedUnit = InferResponseType<typeof rpc.api.units.$post, 201>;
+type UpdatedUnit = InferResponseType<(typeof rpc.api.units)[":id"]["$put"], 200>;
+type CreatedTenant = InferResponseType<typeof rpc.api.tenants.$post, 201>;
+type UpdatedTenant = InferResponseType<(typeof rpc.api.tenants)[":id"]["$put"], 200>;
+type CreatedLease = InferResponseType<typeof rpc.api.leases.$post, 201>;
+type UpdatedLease = InferResponseType<(typeof rpc.api.leases)[":id"]["$put"], 200>;
+type CreatedVendor = InferResponseType<typeof rpc.api.vendors.$post, 201>;
+type UpdatedVendor = InferResponseType<(typeof rpc.api.vendors)[":id"]["$put"], 200>;
+type CreatedWorkOrder = InferResponseType<(typeof rpc.api)["work-orders"]["$post"], 201>;
+type UpdatedWorkOrder = InferResponseType<(typeof rpc.api)["work-orders"][":id"]["$put"], 200>;
+type GeneratedCharges = InferResponseType<(typeof rpc.api)["rent-charges"]["generate"]["$post"], 200>;
+type PaidCharge = InferResponseType<typeof rpc.api.payments.$post, 201>;
+type SettingsRes = InferResponseType<typeof rpc.api.settings.$put, 200>;
+
+const id = (n: number) => ({ param: { id: String(n) } });
+
 export function useAppState() {
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
+  const propertiesQuery = useProperties();
+  const vendorsQuery = useVendors();
+  const settingsQuery = useSettingsQuery();
   const [error, setError] = useState<string | null>(null);
 
-  // Lookup loaders ─────────────────────────────────────────────────
+  const settings = useMemo(
+    () => parseSettings(settingsQuery.data ?? {}),
+    [settingsQuery.data],
+  );
 
-  const refreshLookups = useCallback(async () => {
-    const [props, vens, st] = await Promise.all([
-      api<{ properties: Property[] }>("GET", "/api/properties"),
-      api<{ vendors: Vendor[] }>("GET", "/api/vendors").catch(() => ({ vendors: [] })),
-      api<{ settings: Record<string, string> }>("GET", "/api/settings").catch(() => ({ settings: {} })),
-    ]);
-    setProperties(props.properties);
-    setVendors(vens.vendors);
-    setSettings(parseSettings(st.settings));
-  }, []);
+  // Every write goes through here: run it, then let the cache refill itself.
+  const write = useCallback(
+    async <T,>(fn: () => Promise<T>): Promise<T> => {
+      const result = await fn();
+      await invalidateAll(qc);
+      return result;
+    },
+    [qc],
+  );
 
-  const updateSettings = useCallback(async (patch: Partial<AppSettings>) => {
-    const body: Record<string, string> = {};
-    for (const [k, v] of Object.entries(patch)) {
-      if (v !== undefined) body[k] = String(v);
-    }
-    const res = await api<{ settings: Record<string, string> }>("PUT", "/api/settings", body);
-    setSettings(parseSettings(res.settings));
-  }, []);
-
-  // Initial load.
-  useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true);
-        await refreshLookups();
-      } catch (err) {
-        setError((err as Error).message);
-      } finally {
-        setLoading(false);
+  const settingsMutation = useMutation({
+    mutationFn: (patch: Partial<AppSettings>) => {
+      const body: Record<string, string> = {};
+      for (const [k, v] of Object.entries(patch)) {
+        if (v !== undefined) body[k] = String(v);
       }
-    })();
-  }, [refreshLookups]);
+      return unwrap<SettingsRes>(rpc.api.settings.$put({ json: body }));
+    },
+    onSuccess: (res) => qc.setQueryData(keys.settings, res.settings),
+  });
 
-  // Property mutations ─────────────────────────────────────────────
+  const updateSettings = useCallback(
+    async (patch: Partial<AppSettings>) => { await settingsMutation.mutateAsync(patch); },
+    [settingsMutation],
+  );
 
-  const createProperty = useCallback(async (data: NewProperty) => {
-    const res = await api<{ property: Property }>("POST", "/api/properties", data);
-    await refreshLookups();
-    return res.property;
-  }, [refreshLookups]);
+  // ── Properties ───────────────────────────────────────────────────
 
-  const updateProperty = useCallback(async (id: number, patch: Partial<NewProperty>) => {
-    const res = await api<{ property: Property }>("PUT", `/api/properties/${id}`, patch);
-    await refreshLookups();
-    return res.property;
-  }, [refreshLookups]);
+  const createProperty = useCallback((data: NewProperty) => write(async () =>
+    (await unwrap<CreatedProperty>(rpc.api.properties.$post({ json: data as PropertyBody }))).property as Property,
+  ), [write]);
 
-  const deleteProperty = useCallback(async (id: number) => {
-    await api("DELETE", `/api/properties/${id}`);
-    await refreshLookups();
-  }, [refreshLookups]);
+  const updateProperty = useCallback((n: number, patch: Partial<NewProperty>) => write(async () =>
+    (await unwrap<UpdatedProperty>(rpc.api.properties[":id"].$put({ ...id(n), json: patch as Partial<PropertyBody> }))).property as Property,
+  ), [write]);
 
-  // Unit mutations ─────────────────────────────────────────────────
+  const deleteProperty = useCallback((n: number) => write(async () => {
+    await unwrap(rpc.api.properties[":id"].$delete(id(n)));
+  }), [write]);
 
-  const listUnits = useCallback(async (propertyId?: number): Promise<Unit[]> => {
-    const path = propertyId ? `/api/units?property_id=${propertyId}` : "/api/units";
-    const data = await api<{ units: Unit[] }>("GET", path);
-    return data.units;
-  }, []);
+  // ── Units ────────────────────────────────────────────────────────
 
-  const createUnit = useCallback(async (data: NewUnit) => {
-    const res = await api<{ unit: Unit }>("POST", "/api/units", data);
-    await refreshLookups();
-    return res.unit;
-  }, [refreshLookups]);
+  const createUnit = useCallback((data: NewUnit) => write(async () =>
+    (await unwrap<CreatedUnit>(rpc.api.units.$post({ json: data as UnitBody }))).unit as Unit,
+  ), [write]);
 
-  const updateUnit = useCallback(async (id: number, patch: Partial<NewUnit>) => {
-    const res = await api<{ unit: Unit }>("PUT", `/api/units/${id}`, patch);
-    await refreshLookups();
-    return res.unit;
-  }, [refreshLookups]);
+  const updateUnit = useCallback((n: number, patch: Partial<NewUnit>) => write(async () =>
+    (await unwrap<UpdatedUnit>(rpc.api.units[":id"].$put({ ...id(n), json: patch as Partial<UnitBody> }))).unit as Unit,
+  ), [write]);
 
-  const deleteUnit = useCallback(async (id: number) => {
-    await api("DELETE", `/api/units/${id}`);
-    await refreshLookups();
-  }, [refreshLookups]);
+  const deleteUnit = useCallback((n: number) => write(async () => {
+    await unwrap(rpc.api.units[":id"].$delete(id(n)));
+  }), [write]);
 
-  // Tenant mutations ───────────────────────────────────────────────
+  // ── Tenants ──────────────────────────────────────────────────────
 
-  const listTenants = useCallback(async (q?: string): Promise<Tenant[]> => {
-    const path = q ? `/api/tenants?q=${encodeURIComponent(q)}` : "/api/tenants";
-    const data = await api<{ tenants: Tenant[] }>("GET", path);
-    return data.tenants;
-  }, []);
+  const createTenant = useCallback((data: NewTenant) => write(async () =>
+    (await unwrap<CreatedTenant>(rpc.api.tenants.$post({ json: data as TenantBody }))).tenant as Tenant,
+  ), [write]);
 
-  const createTenant = useCallback(async (data: NewTenant) => {
-    const res = await api<{ tenant: Tenant }>("POST", "/api/tenants", data);
-    return res.tenant;
-  }, []);
+  const updateTenant = useCallback((n: number, patch: Partial<NewTenant>) => write(async () =>
+    (await unwrap<UpdatedTenant>(rpc.api.tenants[":id"].$put({ ...id(n), json: patch as Partial<TenantBody> }))).tenant as Tenant,
+  ), [write]);
 
-  const updateTenant = useCallback(async (id: number, patch: Partial<NewTenant>) => {
-    const res = await api<{ tenant: Tenant }>("PUT", `/api/tenants/${id}`, patch);
-    return res.tenant;
-  }, []);
+  const deleteTenant = useCallback((n: number) => write(async () => {
+    await unwrap(rpc.api.tenants[":id"].$delete(id(n)));
+  }), [write]);
 
-  const deleteTenant = useCallback(async (id: number) => {
-    await api("DELETE", `/api/tenants/${id}`);
-  }, []);
+  // ── Leases ───────────────────────────────────────────────────────
 
-  // Lease mutations ────────────────────────────────────────────────
+  const createLease = useCallback((data: NewLease) => write(async () =>
+    (await unwrap<CreatedLease>(rpc.api.leases.$post({ json: data as LeaseBody }))).lease as Lease,
+  ), [write]);
 
-  const listLeases = useCallback(async (params?: { tenant_id?: number; unit_id?: number; status?: string }): Promise<Lease[]> => {
-    const qs = new URLSearchParams();
-    if (params?.tenant_id) qs.set("tenant_id", String(params.tenant_id));
-    if (params?.unit_id) qs.set("unit_id", String(params.unit_id));
-    if (params?.status) qs.set("status", params.status);
-    const path = qs.toString() ? `/api/leases?${qs.toString()}` : "/api/leases";
-    const data = await api<{ leases: Lease[] }>("GET", path);
-    return data.leases;
-  }, []);
+  const updateLease = useCallback((n: number, patch: Partial<NewLease>) => write(async () =>
+    (await unwrap<UpdatedLease>(rpc.api.leases[":id"].$put({ ...id(n), json: patch as Partial<LeaseBody> }))).lease as Lease,
+  ), [write]);
 
-  const createLease = useCallback(async (data: NewLease) => {
-    const res = await api<{ lease: Lease }>("POST", "/api/leases", data);
-    await refreshLookups();
-    return res.lease;
-  }, [refreshLookups]);
+  const deleteLease = useCallback((n: number) => write(async () => {
+    await unwrap(rpc.api.leases[":id"].$delete(id(n)));
+  }), [write]);
 
-  const updateLease = useCallback(async (id: number, patch: Partial<NewLease>) => {
-    const res = await api<{ lease: Lease }>("PUT", `/api/leases/${id}`, patch);
-    await refreshLookups();
-    return res.lease;
-  }, [refreshLookups]);
+  // ── Rent ─────────────────────────────────────────────────────────
 
-  const deleteLease = useCallback(async (id: number) => {
-    await api("DELETE", `/api/leases/${id}`);
-    await refreshLookups();
-  }, [refreshLookups]);
+  const generateCharges = useCallback((period: string) => write(() =>
+    unwrap<GeneratedCharges>(rpc.api["rent-charges"].generate.$post({ json: { period } })),
+  ), [write]);
 
-  // Rent / payments ────────────────────────────────────────────────
+  const recordPayment = useCallback((input: PaymentBody) => write(async () => {
+    const res = await unwrap<PaidCharge>(rpc.api.payments.$post({ json: input }));
+    await qc.invalidateQueries({ queryKey: keys.payments(input.charge_id) });
+    return res.charge as RentCharge;
+  }), [write, qc]);
 
-  const listCharges = useCallback(async (period?: string): Promise<RentCharge[]> => {
-    const path = period ? `/api/rent-charges?period=${encodeURIComponent(period)}` : "/api/rent-charges";
-    const data = await api<{ charges: RentCharge[] }>("GET", path);
-    return data.charges;
-  }, []);
+  // ── Vendors ──────────────────────────────────────────────────────
 
-  const generateCharges = useCallback(async (period: string) => {
-    const data = await api<{ created: number; period: string }>("POST", "/api/rent-charges/generate", { period });
-    return data;
-  }, []);
+  const createVendor = useCallback((data: NewVendor) => write(async () =>
+    (await unwrap<CreatedVendor>(rpc.api.vendors.$post({ json: data as VendorBody }))).vendor as Vendor,
+  ), [write]);
 
-  const recordPayment = useCallback(async (input: {
-    charge_id: number;
-    amount: number;
-    method?: string;
-    reference?: string | null;
-    notes?: string | null;
-    paid_at?: string;
-  }) => {
-    const res = await api<{ charge: RentCharge }>("POST", "/api/payments", input);
-    return res.charge;
-  }, []);
+  const updateVendor = useCallback((n: number, patch: Partial<NewVendor>) => write(async () =>
+    (await unwrap<UpdatedVendor>(rpc.api.vendors[":id"].$put({ ...id(n), json: patch as Partial<VendorBody> }))).vendor as Vendor,
+  ), [write]);
 
-  // Vendor mutations ───────────────────────────────────────────────
+  const deleteVendor = useCallback((n: number) => write(async () => {
+    await unwrap(rpc.api.vendors[":id"].$delete(id(n)));
+  }), [write]);
 
-  const createVendor = useCallback(async (data: NewVendor) => {
-    const res = await api<{ vendor: Vendor }>("POST", "/api/vendors", data);
-    await refreshLookups();
-    return res.vendor;
-  }, [refreshLookups]);
+  // ── Work orders ──────────────────────────────────────────────────
 
-  const updateVendor = useCallback(async (id: number, patch: Partial<NewVendor>) => {
-    const res = await api<{ vendor: Vendor }>("PUT", `/api/vendors/${id}`, patch);
-    await refreshLookups();
-    return res.vendor;
-  }, [refreshLookups]);
+  const createWorkOrder = useCallback((data: NewWorkOrder) => write(async () =>
+    (await unwrap<CreatedWorkOrder>(rpc.api["work-orders"].$post({ json: data as WorkOrderBody }))).work_order as WorkOrder,
+  ), [write]);
 
-  const deleteVendor = useCallback(async (id: number) => {
-    await api("DELETE", `/api/vendors/${id}`);
-    await refreshLookups();
-  }, [refreshLookups]);
+  const updateWorkOrder = useCallback((n: number, patch: Partial<NewWorkOrder>) => write(async () =>
+    (await unwrap<UpdatedWorkOrder>(rpc.api["work-orders"][":id"].$put({ ...id(n), json: patch as Partial<WorkOrderBody> }))).work_order as WorkOrder,
+  ), [write]);
 
-  // Work order mutations ───────────────────────────────────────────
-
-  const listWorkOrders = useCallback(async (params?: { status?: string; property_id?: number }): Promise<WorkOrder[]> => {
-    const qs = new URLSearchParams();
-    if (params?.status) qs.set("status", params.status);
-    if (params?.property_id) qs.set("property_id", String(params.property_id));
-    const path = qs.toString() ? `/api/work-orders?${qs.toString()}` : "/api/work-orders";
-    const data = await api<{ work_orders: WorkOrder[] }>("GET", path);
-    return data.work_orders;
-  }, []);
-
-  const createWorkOrder = useCallback(async (data: NewWorkOrder) => {
-    const res = await api<{ work_order: WorkOrder }>("POST", "/api/work-orders", data);
-    return res.work_order;
-  }, []);
-
-  const updateWorkOrder = useCallback(async (id: number, patch: Partial<NewWorkOrder>) => {
-    const res = await api<{ work_order: WorkOrder }>("PUT", `/api/work-orders/${id}`, patch);
-    return res.work_order;
-  }, []);
-
-  const deleteWorkOrder = useCallback(async (id: number) => {
-    await api("DELETE", `/api/work-orders/${id}`);
-  }, []);
+  const deleteWorkOrder = useCallback((n: number) => write(async () => {
+    await unwrap(rpc.api["work-orders"][":id"].$delete(id(n)));
+  }), [write]);
 
   return {
     // data
-    properties, vendors, settings,
-    loading, error, setError,
-    // refresh
-    refreshLookups,
+    properties: (propertiesQuery.data ?? []) as Property[],
+    vendors: (vendorsQuery.data ?? []) as Vendor[],
+    settings,
+    loading: propertiesQuery.isLoading || vendorsQuery.isLoading || settingsQuery.isLoading,
+    error: error ?? (propertiesQuery.error as Error | null)?.message ?? null,
+    setError,
     // settings
     updateSettings,
     // properties / units
     createProperty, updateProperty, deleteProperty,
-    listUnits, createUnit, updateUnit, deleteUnit,
+    createUnit, updateUnit, deleteUnit,
     // tenants
-    listTenants, createTenant, updateTenant, deleteTenant,
+    createTenant, updateTenant, deleteTenant,
     // leases
-    listLeases, createLease, updateLease, deleteLease,
+    createLease, updateLease, deleteLease,
     // rent
-    listCharges, generateCharges, recordPayment,
+    generateCharges, recordPayment,
     // vendors
     createVendor, updateVendor, deleteVendor,
     // work orders
-    listWorkOrders, createWorkOrder, updateWorkOrder, deleteWorkOrder,
+    createWorkOrder, updateWorkOrder, deleteWorkOrder,
   };
 }
 

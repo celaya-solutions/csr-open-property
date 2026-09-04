@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ClipboardList, Plus, Search } from "lucide-react";
 import { useApp } from "@/context";
+import { useLeases } from "@/hooks/queries";
 import { cn, daysBetween, formatDate, formatMoney, toIsoDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,26 +21,12 @@ const STATUS_TONE: Record<string, string> = {
 
 export function LeasesPage({ navigate }: { navigate: (to: string) => void }) {
   const app = useApp();
-  const [leases, setLeases] = useState<Lease[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isPending: loading } = useLeases();
+  const leases: Lease[] = data ?? [];
   const [filter, setFilter] = useState<LeaseStatus | "all">("active");
   const [q, setQ] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Lease | undefined>(undefined);
-
-  async function load() {
-    try {
-      setLoading(true);
-      const list = await app.listLeases();
-      setLeases(list);
-    } catch (err) {
-      app.setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const filtered = useMemo(() => {
     let out = leases;
@@ -158,7 +145,7 @@ export function LeasesPage({ navigate }: { navigate: (to: string) => void }) {
 
       <LeaseDialog
         open={dialogOpen}
-        onOpenChange={(o) => { setDialogOpen(o); if (!o) load(); }}
+        onOpenChange={setDialogOpen}
         lease={editing}
       />
     </div>

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { CircleAlert, Plus, Wrench } from "lucide-react";
 import { useApp } from "@/context";
+import { useWorkOrders } from "@/hooks/queries";
 import { cn, formatDate, formatMoney } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,25 +27,11 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "dest
 
 export function MaintenancePage() {
   const app = useApp();
-  const [orders, setOrders] = useState<WorkOrder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isPending: loading } = useWorkOrders();
+  const orders: WorkOrder[] = data ?? [];
   const [filter, setFilter] = useState<WorkOrderStatus | "open_all" | "all">("open_all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<WorkOrder | undefined>(undefined);
-
-  async function load() {
-    try {
-      setLoading(true);
-      const list = await app.listWorkOrders();
-      setOrders(list);
-    } catch (err) {
-      app.setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const counts = useMemo(() => {
     const c = { all: orders.length, open: 0, assigned: 0, in_progress: 0, completed: 0, urgent: 0 };
@@ -152,7 +139,7 @@ export function MaintenancePage() {
 
       <WorkOrderDialog
         open={dialogOpen}
-        onOpenChange={(o) => { setDialogOpen(o); if (!o) load(); }}
+        onOpenChange={setDialogOpen}
         workOrder={editing}
       />
     </div>

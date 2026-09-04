@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ArrowLeft, Building2, MapPin, Pencil, Plus, Wrench } from "lucide-react";
 import { useApp } from "@/context";
-import { api } from "@/api";
+import { useProperty, useUnits, useWorkOrders } from "@/hooks/queries";
 import { cn, colorClasses, formatDate, formatMoney } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { PropertyDialog } from "./property-dialog";
 import { UnitDialog } from "./unit-dialog";
 import { WorkOrderDialog } from "../maintenance/work-order-dialog";
-import type { Property, Unit, WorkOrder } from "@/types";
+import type { Unit, WorkOrder } from "@/types";
 
 const TYPE_LABEL: Record<string, string> = {
   single_family: "Single-family",
@@ -28,37 +28,17 @@ const STATUS_TONE: Record<string, string> = {
 
 export function PropertyPage({ id, navigate }: { id: number; navigate: (to: string) => void }) {
   const app = useApp();
-  const [property, setProperty] = useState<Property | null>(null);
-  const [units, setUnits] = useState<Unit[]>([]);
-  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const propertyQuery = useProperty(id);
+  const unitsQuery = useUnits(id);
+  const workOrdersQuery = useWorkOrders({ property_id: id });
+  const property = propertyQuery.data ?? null;
+  const units: Unit[] = unitsQuery.data ?? [];
+  const workOrders: WorkOrder[] = workOrdersQuery.data ?? [];
+  const loading = propertyQuery.isPending || unitsQuery.isPending || workOrdersQuery.isPending;
   const [editingProperty, setEditingProperty] = useState(false);
   const [editingUnit, setEditingUnit] = useState<Unit | undefined>(undefined);
   const [unitDialogOpen, setUnitDialogOpen] = useState(false);
   const [woDialogOpen, setWoDialogOpen] = useState(false);
-
-  async function load() {
-    try {
-      setLoading(true);
-      const [{ property: p }, ulist, wlist] = await Promise.all([
-        api<{ property: Property }>("GET", `/api/properties/${id}`),
-        app.listUnits(id),
-        app.listWorkOrders({ property_id: id }),
-      ]);
-      setProperty(p);
-      setUnits(ulist);
-      setWorkOrders(wlist);
-    } catch (err) {
-      app.setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
 
   if (loading) {
     return (
@@ -202,18 +182,18 @@ export function PropertyPage({ id, navigate }: { id: number; navigate: (to: stri
 
       <PropertyDialog
         open={editingProperty}
-        onOpenChange={(o) => { setEditingProperty(o); if (!o) load(); }}
+        onOpenChange={setEditingProperty}
         property={property}
       />
       <UnitDialog
         open={unitDialogOpen}
-        onOpenChange={(o) => { setUnitDialogOpen(o); if (!o) load(); }}
+        onOpenChange={setUnitDialogOpen}
         propertyId={property.id}
         unit={editingUnit}
       />
       <WorkOrderDialog
         open={woDialogOpen}
-        onOpenChange={(o) => { setWoDialogOpen(o); if (!o) load(); }}
+        onOpenChange={setWoDialogOpen}
         defaults={{ property_id: property.id }}
       />
     </div>
