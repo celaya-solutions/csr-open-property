@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Mail, Phone, Plus, Search, User } from "lucide-react";
-import { useApp } from "@/context";
+import { useTenants } from "@/hooks/queries";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,25 +9,10 @@ import { TenantDialog } from "./tenant-dialog";
 import type { Tenant } from "@/types";
 
 export function TenantsList({ navigate }: { navigate: (to: string) => void }) {
-  const app = useApp();
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isPending: loading } = useTenants();
+  const tenants: Tenant[] = data ?? [];
   const [q, setQ] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-
-  async function load() {
-    try {
-      setLoading(true);
-      const list = await app.listTenants();
-      setTenants(list);
-    } catch (err) {
-      app.setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const filtered = useMemo(() => {
     if (!q.trim()) return tenants;
@@ -122,7 +107,7 @@ export function TenantsList({ navigate }: { navigate: (to: string) => void }) {
         )}
       </div>
 
-      <TenantDialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) load(); }} />
+      <TenantDialog open={dialogOpen} onOpenChange={setDialogOpen} />
     </div>
   );
 }

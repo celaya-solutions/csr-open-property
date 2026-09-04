@@ -49,9 +49,13 @@ There is a `db:migrate` script left over from the source project that expects a 
 | --- | --- |
 | Any screen | `src/client/components/` |
 | Which screen shows for which address | `src/client/hooks/use-router.ts` |
-| How data loads and saves | `src/client/hooks/use-app-state.ts` |
+| How data loads (cached queries) | `src/client/hooks/queries.ts` |
+| How data saves (mutations) | `src/client/hooks/use-app-state.ts` |
+| The typed caller for the API | `src/client/lib/rpc.ts` |
 | Dates, money, and color helpers | `src/client/lib/utils.ts` |
-| What the API does | `src/server/index.ts` |
+| What the API does | `src/server/routes/` |
+| Which routes exist | `src/server/index.ts` |
+| Shapes both sides agree on | `src/shared/types.ts` |
 | What gets stored | `src/server/schema.sql` |
 | The class password gate and how the server starts | `src/server/node.ts` |
 
@@ -69,7 +73,9 @@ The source project drew a line and the course keeps it. There is no listing synd
 
 ## Built with
 
-React 19 and TypeScript on Vite for the screen, with Tailwind and a vendored copy of shadcn/ui components. Hono on Node 22 for the API. SQLite for storage.
+React 19 and TypeScript on Vite for the screen, with Tailwind and a vendored copy of shadcn/ui components. TanStack Query holds the client cache. Hono on Node 22 for the API, with Zod validating every request body. SQLite for storage.
+
+The screen talks to the server through Hono's typed client, so the response shapes come from the route definitions rather than being written out twice. Rename a column in `src/server/routes/` and the screens that read it stop compiling.
 
 ## Source and license
 

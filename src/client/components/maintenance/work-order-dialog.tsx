@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context";
+import { useUnits } from "@/hooks/queries";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,7 @@ const STATUSES: { value: WorkOrderStatus; label: string }[] = [
 
 export function WorkOrderDialog({ open, onOpenChange, workOrder, defaults, onSaved }: Props) {
   const app = useApp();
-  const [units, setUnits] = useState<Unit[]>([]);
+  const units: Unit[] = useUnits().data ?? [];
   const [propertyId, setPropertyId] = useState<number | "">("");
   const [unitId, setUnitId] = useState<number | "">("");
   const [vendorId, setVendorId] = useState<number | "">("");
@@ -45,18 +46,6 @@ export function WorkOrderDialog({ open, onOpenChange, workOrder, defaults, onSav
   const [cost, setCost] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    (async () => {
-      try {
-        const all = await app.listUnits();
-        setUnits(all);
-      } catch (err) {
-        app.setError((err as Error).message);
-      }
-    })();
-  }, [open, app]);
 
   useEffect(() => {
     if (!open) return;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context";
-import { api } from "@/api";
+import { useTenants, useUnits } from "@/hooks/queries";
 import { toIsoDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -27,8 +27,8 @@ const STATUSES: { value: LeaseStatus; label: string }[] = [
 
 export function LeaseDialog({ open, onOpenChange, lease, defaults, onSaved }: Props) {
   const app = useApp();
-  const [units, setUnits] = useState<Unit[]>([]);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const units: Unit[] = useUnits().data ?? [];
+  const tenants: Tenant[] = useTenants().data ?? [];
 
   const [unitId, setUnitId] = useState<number | "">("");
   const [tenantId, setTenantId] = useState<number | "">("");
@@ -41,19 +41,6 @@ export function LeaseDialog({ open, onOpenChange, lease, defaults, onSaved }: Pr
   const [status, setStatus] = useState<LeaseStatus>("active");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    (async () => {
-      try {
-        const [u, t] = await Promise.all([app.listUnits(), app.listTenants()]);
-        setUnits(u);
-        setTenants(t);
-      } catch (err) {
-        app.setError((err as Error).message);
-      }
-    })();
-  }, [open, app]);
 
   useEffect(() => {
     if (!open) return;
@@ -124,25 +111,12 @@ export function LeaseDialog({ open, onOpenChange, lease, defaults, onSaved }: Pr
     }
   }
 
-  // Get a property association from the API (LEASE_SELECT joins) — but for the dialog
-  // we just need property + unit name in the dropdown. Build a "Property · Unit" label.
-  // Fetch once when open.
-  const [unitLabels, setUnitLabels] = useState<Map<number, string>>(new Map());
-  useEffect(() => {
-    if (!open) return;
-    (async () => {
-      try {
-        const data = await api<{ units: Unit[] }>("GET", "/api/units");
-        const map = new Map<number, string>();
-        for (const u of data.units) {
-          map.set(u.id, `${u.property_name ?? "—"} · ${u.name}`);
-        }
-        setUnitLabels(map);
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, [open]);
+  // The dropdown shows "Property · Unit"; the unit list already carries the
+  // joined property name, so no second request is needed.
+  const unitLabels = useMemo(
+    () => new Map(units.map((u) => [u.id, `${u.property_name ?? "—"} · ${u.name}`])),
+    [units],
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

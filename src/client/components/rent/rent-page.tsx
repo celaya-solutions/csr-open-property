@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Receipt, Sparkles } from "lucide-react";
 import { useApp } from "@/context";
+import { useCharges } from "@/hooks/queries";
 import { addMonths, cn, currentPeriod, formatDate, formatMoney, formatPeriod } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,30 +21,15 @@ const STATUS_TONE: Record<ChargeStatus, string> = {
 export function RentPage() {
   const app = useApp();
   const [period, setPeriod] = useState<string>(currentPeriod());
-  const [charges, setCharges] = useState<RentCharge[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isPending: loading } = useCharges(period);
+  const charges: RentCharge[] = data ?? [];
   const [paymentTarget, setPaymentTarget] = useState<RentCharge | null>(null);
   const [generating, setGenerating] = useState(false);
-
-  async function load() {
-    try {
-      setLoading(true);
-      const list = await app.listCharges(period);
-      setCharges(list);
-    } catch (err) {
-      app.setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [period]);
 
   async function generate() {
     setGenerating(true);
     try {
       const res = await app.generateCharges(period);
-      await load();
       app.setError(res.created ? null : "All active leases already have a charge for this period.");
     } catch (err) {
       app.setError((err as Error).message);
@@ -193,7 +179,6 @@ export function RentPage() {
         open={paymentTarget !== null}
         onOpenChange={(o) => { if (!o) setPaymentTarget(null); }}
         charge={paymentTarget}
-        onSaved={load}
       />
     </div>
   );

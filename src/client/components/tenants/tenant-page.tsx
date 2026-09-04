@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ArrowLeft, Mail, Pencil, Phone, User } from "lucide-react";
 import { useApp } from "@/context";
-import { api } from "@/api";
+import { useLeases, useTenant } from "@/hooks/queries";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,31 +11,12 @@ import type { Lease, Tenant } from "@/types";
 
 export function TenantPage({ id, navigate }: { id: number; navigate: (to: string) => void }) {
   const app = useApp();
-  const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [leases, setLeases] = useState<Lease[]>([]);
-  const [loading, setLoading] = useState(true);
+  const tenantQuery = useTenant(id);
+  const leasesQuery = useLeases({ tenant_id: id });
+  const tenant: Tenant | null = tenantQuery.data ?? null;
+  const leases: Lease[] = leasesQuery.data ?? [];
+  const loading = tenantQuery.isPending || leasesQuery.isPending;
   const [editing, setEditing] = useState(false);
-
-  async function load() {
-    try {
-      setLoading(true);
-      const [{ tenant: t }, ll] = await Promise.all([
-        api<{ tenant: Tenant }>("GET", `/api/tenants/${id}`),
-        app.listLeases({ tenant_id: id }),
-      ]);
-      setTenant(t);
-      setLeases(ll);
-    } catch (err) {
-      app.setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
 
   if (loading) {
     return <div className="flex flex-1 items-center justify-center text-muted-foreground">Loading tenant…</div>;
@@ -140,7 +121,7 @@ export function TenantPage({ id, navigate }: { id: number; navigate: (to: string
 
       <TenantDialog
         open={editing}
-        onOpenChange={(o) => { setEditing(o); if (!o) load(); }}
+        onOpenChange={setEditing}
         tenant={tenant}
       />
     </div>

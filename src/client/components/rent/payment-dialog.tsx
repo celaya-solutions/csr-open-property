@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useApp } from "@/context";
-import { api } from "@/api";
+import { invalidateAll, keys, usePayments } from "@/hooks/queries";
+import { rpc, unwrap } from "@/lib/rpc";
 import { formatDate, formatMoney, toIsoDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { Payment, PaymentMethod, RentCharge } from "@/types";
+import type { PaymentMethod, RentCharge } from "@/types";
 
 interface Props {
   open: boolean;
@@ -27,13 +29,14 @@ const METHODS: { value: PaymentMethod; label: string }[] = [
 
 export function PaymentDialog({ open, onOpenChange, charge, onSaved }: Props) {
   const app = useApp();
+  const qc = useQueryClient();
   const [amount, setAmount] = useState("0");
   const [method, setMethod] = useState<PaymentMethod>("ach");
   const [paidAt, setPaidAt] = useState(toIsoDate(new Date()));
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  const [history, setHistory] = useState<Payment[]>([]);
+  const history = usePayments(open && charge ? charge.id : null).data ?? [];
 
   useEffect(() => {
     if (!open || !charge) return;
@@ -43,14 +46,6 @@ export function PaymentDialog({ open, onOpenChange, charge, onSaved }: Props) {
     setPaidAt(toIsoDate(new Date()));
     setReference("");
     setNotes("");
-    (async () => {
-      try {
-        const data = await api<{ payments: Payment[] }>("GET", `/api/rent-charges/${charge.id}/payments`);
-        setHistory(data.payments);
-      } catch {
-        setHistory([]);
-      }
-    })();
   }, [open, charge]);
 
   async function save() {
@@ -79,8 +74,9 @@ export function PaymentDialog({ open, onOpenChange, charge, onSaved }: Props) {
   async function deletePayment(id: number) {
     if (!confirm("Delete this payment?")) return;
     try {
-      await api("DELETE", `/api/payments/${id}`);
-      setHistory((prev) => prev.filter((p) => p.id !== id));
+      await unwrap(rpc.api.payments[":id"].$delete({ param: { id: String(id) } }));
+      if (charge) await qc.invalidateQueries({ queryKey: keys.payments(charge.id) });
+      await invalidateAll(qc);
       onSaved?.();
     } catch (err) {
       app.setError((err as Error).message);
