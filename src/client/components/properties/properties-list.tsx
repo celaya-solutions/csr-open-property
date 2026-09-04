@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PropertyDialog } from "./property-dialog";
 import type { Property } from "@/types";
+import { useGo } from "@/lib/navigate";
 
 const TYPE_LABEL: Record<string, string> = {
   single_family: "Single-family",
@@ -15,7 +16,8 @@ const TYPE_LABEL: Record<string, string> = {
   commercial: "Commercial",
 };
 
-export function PropertiesList({ navigate }: { navigate: (to: string) => void }) {
+export function PropertiesList() {
+  const navigate = useGo();
   const { properties } = useApp();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Property | undefined>(undefined);

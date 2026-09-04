@@ -1,8 +1,9 @@
+import { eq, getTableColumns, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { get, query, run } from "../db";
-import { buildUpdate, intParam, jsonBody } from "./shared";
-import type { Property } from "../../shared/types";
+import { db } from "../db";
+import { properties as propertiesTable } from "../schema";
+import { definedFields, intParam, jsonBody } from "./shared";
 
 const PropertyInput = z.object({
   name: z.string().min(1),
@@ -16,48 +17,51 @@ const PropertyInput = z.object({
   color: z.string().optional(),
 });
 
+// Written out in SQL: inside a subquery Drizzle drops the table prefix from an
+// interpolated column, and "id" alone would bind to units, not properties.
+const countUnits = (status?: "occupied") => sql<number>`(
+  SELECT COUNT(*) FROM units
+  WHERE units.property_id = properties.id
+  ${status ? sql`AND units.status = ${status}` : sql``}
+)`;
+
 export const properties = new Hono()
   .get("/", async (c) => {
-    const rows = await query<Property>(
-      `SELECT p.*,
-         (SELECT COUNT(*) FROM units u WHERE u.property_id = p.id) as unit_count,
-         (SELECT COUNT(*) FROM units u WHERE u.property_id = p.id AND u.status = 'occupied') as occupied_count
-       FROM properties p ORDER BY p.name`,
-    );
+    const rows = await db()
+      .select({
+        ...getTableColumns(propertiesTable),
+        unit_count: countUnits(),
+        occupied_count: countUnits("occupied"),
+      })
+      .from(propertiesTable)
+      .orderBy(propertiesTable.name);
     return c.json({ properties: rows });
   })
   .get("/:id", async (c) => {
     const id = intParam(c.req.param("id"));
     if (!id) return c.json({ error: "Invalid ID" }, 400);
-    const row = await get<Property>("SELECT * FROM properties WHERE id = ?", [id]);
+    const [row] = await db().select().from(propertiesTable).where(eq(propertiesTable.id, id));
     if (!row) return c.json({ error: "Not found" }, 404);
     return c.json({ property: row });
   })
   .post("/", jsonBody(PropertyInput), async (c) => {
     const d = c.req.valid("json");
-    const result = await run(
-      `INSERT INTO properties (name, type, address, city, state, zip, year_built, notes, color)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [d.name, d.type ?? "single_family", d.address ?? null, d.city ?? null, d.state ?? null, d.zip ?? null, d.year_built ?? null, d.notes ?? null, d.color ?? "sky"],
-    );
-    const row = await get<Property>("SELECT * FROM properties WHERE id = ?", [result.lastInsertRowid]);
-    return c.json({ property: row! }, 201);
+    const [row] = await db().insert(propertiesTable).values(d).returning();
+    return c.json({ property: row }, 201);
   })
   .put("/:id", jsonBody(PropertyInput.partial()), async (c) => {
     const id = intParam(c.req.param("id"));
     if (!id) return c.json({ error: "Invalid ID" }, 400);
-    const { sets, params } = buildUpdate(c.req.valid("json"));
-    if (!sets.length) return c.json({ error: "No fields" }, 400);
-    params.push(id);
-    const r = await run(`UPDATE properties SET ${sets.join(", ")} WHERE id = ?`, params);
-    if (!r.changes) return c.json({ error: "Not found" }, 404);
-    const row = await get<Property>("SELECT * FROM properties WHERE id = ?", [id]);
-    return c.json({ property: row! });
+    const fields = definedFields(c.req.valid("json"));
+    if (!fields) return c.json({ error: "No fields" }, 400);
+    const [row] = await db().update(propertiesTable).set(fields).where(eq(propertiesTable.id, id)).returning();
+    if (!row) return c.json({ error: "Not found" }, 404);
+    return c.json({ property: row });
   })
   .delete("/:id", async (c) => {
     const id = intParam(c.req.param("id"));
     if (!id) return c.json({ error: "Invalid ID" }, 400);
-    const r = await run("DELETE FROM properties WHERE id = ?", [id]);
-    if (!r.changes) return c.json({ error: "Not found" }, 404);
+    const gone = await db().delete(propertiesTable).where(eq(propertiesTable.id, id)).returning({ id: propertiesTable.id });
+    if (!gone.length) return c.json({ error: "Not found" }, 404);
     return c.json({ ok: true });
   });

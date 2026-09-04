@@ -1,8 +1,9 @@
+import { and, desc, eq, getTableColumns, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { get, query, run } from "../db";
-import { buildUpdate, intParam, jsonBody } from "./shared";
-import type { WorkOrder } from "../../shared/types";
+import { db } from "../db";
+import { properties, tenants, units, vendors, workOrders as workOrdersTable } from "../schema";
+import { definedFields, intParam, jsonBody } from "./shared";
 
 const WorkOrderInput = z.object({
   property_id: z.number().int().nullable().optional(),
@@ -19,64 +20,63 @@ const WorkOrderInput = z.object({
   notes: z.string().optional().nullable(),
 });
 
-const WO_SELECT = `
-  SELECT w.*,
-    p.name as property_name, p.color as property_color,
-    u.name as unit_name,
-    t.first_name as tenant_first_name, t.last_name as tenant_last_name,
-    v.name as vendor_name, v.color as vendor_color
-  FROM work_orders w
-  LEFT JOIN properties p ON p.id = w.property_id
-  LEFT JOIN units u ON u.id = w.unit_id
-  LEFT JOIN tenants t ON t.id = w.tenant_id
-  LEFT JOIN vendors v ON v.id = w.vendor_id
-`;
+// Urgent first, then high, normal, low — the order the board reads in.
+export const byPriority = sql`CASE ${workOrdersTable.priority}
+  WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`;
+
+const workOrderColumns = {
+  ...getTableColumns(workOrdersTable),
+  property_name: properties.name,
+  property_color: properties.color,
+  unit_name: units.name,
+  tenant_first_name: tenants.first_name,
+  tenant_last_name: tenants.last_name,
+  vendor_name: vendors.name,
+  vendor_color: vendors.color,
+};
+
+const selectWorkOrders = (where?: SQL) => {
+  const q = db()
+    .select(workOrderColumns)
+    .from(workOrdersTable)
+    .leftJoin(properties, eq(properties.id, workOrdersTable.property_id))
+    .leftJoin(units, eq(units.id, workOrdersTable.unit_id))
+    .leftJoin(tenants, eq(tenants.id, workOrdersTable.tenant_id))
+    .leftJoin(vendors, eq(vendors.id, workOrdersTable.vendor_id));
+  return where ? q.where(where) : q;
+};
 
 export const workOrders = new Hono()
   .get("/", async (c) => {
     const status = c.req.query("status");
     const propertyId = intParam(c.req.query("property_id"));
-    const where: string[] = [];
-    const params: unknown[] = [];
-    if (status) { where.push("w.status = ?"); params.push(status); }
-    if (propertyId) { where.push("w.property_id = ?"); params.push(propertyId); }
-    const sql = `${WO_SELECT}${where.length ? " WHERE " + where.join(" AND ") : ""} ORDER BY
-      CASE w.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
-      w.created_at DESC`;
-    const rows = await query<WorkOrder>(sql, params).catch(() => [] as WorkOrder[]);
+    const filters = [
+      status ? eq(workOrdersTable.status, status as never) : undefined,
+      propertyId ? eq(workOrdersTable.property_id, propertyId) : undefined,
+    ].filter(Boolean) as SQL[];
+    const rows = await selectWorkOrders(filters.length ? and(...filters) : undefined)
+      .orderBy(byPriority, desc(workOrdersTable.created_at));
     return c.json({ work_orders: rows });
   })
   .post("/", jsonBody(WorkOrderInput), async (c) => {
-    const d = c.req.valid("json");
-    const result = await run(
-      `INSERT INTO work_orders (property_id, unit_id, tenant_id, vendor_id, title, description, priority, status, scheduled_at, completed_at, cost, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        d.property_id ?? null, d.unit_id ?? null, d.tenant_id ?? null, d.vendor_id ?? null,
-        d.title, d.description ?? null,
-        d.priority ?? "normal", d.status ?? "open",
-        d.scheduled_at ?? null, d.completed_at ?? null,
-        d.cost ?? null, d.notes ?? null,
-      ],
-    );
-    const row = await get<WorkOrder>(`${WO_SELECT} WHERE w.id = ?`, [result.lastInsertRowid]);
-    return c.json({ work_order: row! }, 201);
+    const [{ id }] = await db().insert(workOrdersTable).values(c.req.valid("json")).returning({ id: workOrdersTable.id });
+    const [row] = await selectWorkOrders(eq(workOrdersTable.id, id));
+    return c.json({ work_order: row }, 201);
   })
   .put("/:id", jsonBody(WorkOrderInput.partial()), async (c) => {
     const id = intParam(c.req.param("id"));
     if (!id) return c.json({ error: "Invalid ID" }, 400);
-    const { sets, params } = buildUpdate(c.req.valid("json"));
-    if (!sets.length) return c.json({ error: "No fields" }, 400);
-    params.push(id);
-    const r = await run(`UPDATE work_orders SET ${sets.join(", ")} WHERE id = ?`, params);
-    if (!r.changes) return c.json({ error: "Not found" }, 404);
-    const row = await get<WorkOrder>(`${WO_SELECT} WHERE w.id = ?`, [id]);
-    return c.json({ work_order: row! });
+    const fields = definedFields(c.req.valid("json"));
+    if (!fields) return c.json({ error: "No fields" }, 400);
+    const changed = await db().update(workOrdersTable).set(fields).where(eq(workOrdersTable.id, id)).returning({ id: workOrdersTable.id });
+    if (!changed.length) return c.json({ error: "Not found" }, 404);
+    const [row] = await selectWorkOrders(eq(workOrdersTable.id, id));
+    return c.json({ work_order: row });
   })
   .delete("/:id", async (c) => {
     const id = intParam(c.req.param("id"));
     if (!id) return c.json({ error: "Invalid ID" }, 400);
-    const r = await run("DELETE FROM work_orders WHERE id = ?", [id]);
-    if (!r.changes) return c.json({ error: "Not found" }, 404);
+    const gone = await db().delete(workOrdersTable).where(eq(workOrdersTable.id, id)).returning({ id: workOrdersTable.id });
+    if (!gone.length) return c.json({ error: "Not found" }, 404);
     return c.json({ ok: true });
   });

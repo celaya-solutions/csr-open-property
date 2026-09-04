@@ -18,8 +18,8 @@ The same five things are asked of every project on the shelf:
 
 1. A change you can see on the screen.
 2. A change to the server or to what gets stored.
-3. The frontend live on Vercel.
-4. The backend running on Railway, still running tomorrow.
+3. The app live on the internet.
+4. The server still running tomorrow, on Railway.
 5. A three minute demo: the problem, the before, the after.
 
 ## Run it on your machine
@@ -55,6 +55,8 @@ There is a `db:migrate` script left over from the source project that expects a 
 | Dates, money, and color helpers | `src/client/lib/utils.ts` |
 | What the API does | `src/server/routes/` |
 | Which routes exist | `src/server/index.ts` |
+| Which screens exist | `src/client/router.tsx` |
+| The tables, in TypeScript | `src/server/schema.ts` |
 | Shapes both sides agree on | `src/shared/types.ts` |
 | What gets stored | `src/server/schema.sql` |
 | The class password gate and how the server starts | `src/server/node.ts` |
@@ -65,7 +67,7 @@ A property holds units. A tenant is a person. A lease connects one or more tenan
 
 ## Putting it online
 
-The screen goes on Vercel. The server and the database go on Railway, on a volume, so the ledger is still there the next morning. Step by step in [COURSE_EDITION.md](COURSE_EDITION.md). Copy `vercel.example.json` to `vercel.json` and replace `YOUR-RAILWAY-DOMAIN` with your Railway address, or the live page will have no server to talk to.
+One Railway service runs the whole thing: `pnpm build` writes the screen into `dist/`, and the server hands those files back for any path that is not `/api`. The database sits on a Railway volume, so the ledger is still there the next morning. Step by step in [COURSE_EDITION.md](COURSE_EDITION.md).
 
 ## What it deliberately does not do
 
@@ -73,7 +75,7 @@ The source project drew a line and the course keeps it. There is no listing synd
 
 ## Built with
 
-React 19 and TypeScript on Vite for the screen, with Tailwind and a vendored copy of shadcn/ui components. TanStack Query holds the client cache. Hono on Node 22 for the API, with Zod validating every request body. SQLite for storage.
+React 19 and TypeScript on Vite for the screen, with Tailwind and a vendored copy of shadcn/ui components. TanStack Router splits each page into its own download; TanStack Query holds the client cache. Hono on Node 22 for the API, with Zod validating every request body, Drizzle for the queries, and SQLite for storage.
 
 The screen talks to the server through Hono's typed client, so the response shapes come from the route definitions rather than being written out twice. Rename a column in `src/server/routes/` and the screens that read it stop compiling.
 

@@ -7,8 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TenantDialog } from "./tenant-dialog";
 import type { Tenant } from "@/types";
+import { useGo } from "@/lib/navigate";
 
-export function TenantsList({ navigate }: { navigate: (to: string) => void }) {
+export function TenantsList() {
+  const navigate = useGo();
   const { data, isPending: loading } = useTenants();
   const tenants: Tenant[] = data ?? [];
   const [q, setQ] = useState("");

@@ -20,11 +20,14 @@ export const jsonBody = <T extends z.ZodTypeAny>(schema: T) =>
     }
   });
 
-export function buildUpdate(fields: Record<string, unknown>): { sets: string[]; params: unknown[] } {
-  const sets: string[] = [];
-  const params: unknown[] = [];
+/**
+ * Drop the keys a PATCH body left out, so `.set()` only touches what was sent.
+ * Returns null when nothing is left to write.
+ */
+export function definedFields<T extends Record<string, unknown>>(fields: T): Partial<T> | null {
+  const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(fields)) {
-    if (v !== undefined) { sets.push(`${k} = ?`); params.push(v); }
+    if (v !== undefined) out[k] = v;
   }
-  return { sets, params };
+  return Object.keys(out).length ? (out as Partial<T>) : null;
 }

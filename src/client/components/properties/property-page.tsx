@@ -1,3 +1,4 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArrowLeft, Building2, MapPin, Pencil, Plus, Wrench } from "lucide-react";
 import { useApp } from "@/context";
@@ -10,6 +11,9 @@ import { PropertyDialog } from "./property-dialog";
 import { UnitDialog } from "./unit-dialog";
 import { WorkOrderDialog } from "../maintenance/work-order-dialog";
 import type { Unit, WorkOrder } from "@/types";
+import { useGo } from "@/lib/navigate";
+
+const routeApi = getRouteApi("/properties/$id");
 
 const TYPE_LABEL: Record<string, string> = {
   single_family: "Single-family",
@@ -26,7 +30,9 @@ const STATUS_TONE: Record<string, string> = {
   unavailable: "bg-slate-100 text-slate-700 border-slate-200",
 };
 
-export function PropertyPage({ id, navigate }: { id: number; navigate: (to: string) => void }) {
+export function PropertyPage() {
+  const id = Number(routeApi.useParams().id);
+  const navigate = useGo();
   const app = useApp();
   const propertyQuery = useProperty(id);
   const unitsQuery = useUnits(id);

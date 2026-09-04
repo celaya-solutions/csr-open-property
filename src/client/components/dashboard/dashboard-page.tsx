@@ -12,8 +12,10 @@ import { useDashboard } from "@/hooks/queries";
 import { cn, daysBetween, formatDate, formatMoney, toIsoDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { useGo } from "@/lib/navigate";
 
-export function DashboardPage({ navigate }: { navigate: (to: string) => void }) {
+export function DashboardPage() {
+  const navigate = useGo();
   const { settings } = useApp();
   const { data: summary, isPending } = useDashboard();
 

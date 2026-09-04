@@ -1,12 +1,14 @@
+import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { query, run } from "../db";
+import { db } from "../db";
+import { settings as settingsTable } from "../schema";
 import { jsonBody } from "./shared";
 
 const SettingsInput = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]));
 
 async function readSettings(): Promise<Record<string, string>> {
-  const rows = await query<{ key: string; value: string }>("SELECT key, value FROM settings").catch(() => []);
+  const rows = await db().select().from(settingsTable).catch(() => []);
   const out: Record<string, string> = {};
   for (const r of rows) out[r.key] = r.value;
   return out;
@@ -17,11 +19,13 @@ export const settings = new Hono()
   .put("/", jsonBody(SettingsInput), async (c) => {
     const entries = Object.entries(c.req.valid("json")).filter(([, v]) => v !== undefined && v !== null);
     for (const [key, value] of entries) {
-      await run(
-        `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
-        [key, String(value)],
-      );
+      await db()
+        .insert(settingsTable)
+        .values({ key, value: String(value) })
+        .onConflictDoUpdate({
+          target: settingsTable.key,
+          set: { value: String(value), updated_at: sql`(datetime('now'))` },
+        });
     }
     return c.json({ settings: await readSettings() });
   });

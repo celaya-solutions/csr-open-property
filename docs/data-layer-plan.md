@@ -28,7 +28,14 @@ until it hit the screen.
 - The client calls the server through `hc<AppType>()`. Paths, params, and
   response shapes are now checked at compile time.
 
-## Deliberately out of scope
+## Steps 3 to 6 (done since, on their own branch)
 
-Drizzle, Vitest, TanStack Router, and collapsing the Vercel/Railway split are
-steps 3 to 6 of the larger plan and are not in this branch.
+- **Drizzle** — `src/server/schema.ts` describes the tables `schema.sql`
+  creates. Correlated subqueries stay hand-written SQL: Drizzle drops the
+  table prefix from an interpolated column inside a subquery.
+- **Vitest** — `pnpm test` drives the rent and payment routes against a
+  throwaway SQLite file.
+- **TanStack Router** — one chunk per page, so the first load carries the
+  dashboard and nothing else.
+- **One deploy** — the server hands back the built screen for any path that
+  isn't `/api`, so Railway serves the whole app and `vercel.json` is gone.

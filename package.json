@@ -9,6 +9,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "start": "tsx --env-file-if-exists=.env src/server/node.ts",
+    "test": "vitest run",
     "smoke": "tsx scripts/smoke.ts",
     "db:export": "tsx scripts/export-db.ts"
   },
@@ -26,9 +27,11 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tanstack/react-query": "^5.102.8",
+    "@tanstack/react-router": "^1.170.32",
     "better-sqlite3": "^13.0.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",
     "lucide-react": "^0.575.0",
     "react": "^19.0.0",
@@ -51,6 +54,7 @@
     "tw-animate-css": "^1.2.0",
     "typescript": "^5.7.3",
     "vite": "^6.0.0",
+    "vitest": "^5.0.0",
     "wrangler": "^4.0.0"
   },
   "engines": {
