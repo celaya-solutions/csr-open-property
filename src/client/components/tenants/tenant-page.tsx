@@ -1,3 +1,4 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArrowLeft, Mail, Pencil, Phone, User } from "lucide-react";
 import { useApp } from "@/context";
@@ -8,8 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { TenantDialog } from "./tenant-dialog";
 import type { Lease, Tenant } from "@/types";
+import { useGo } from "@/lib/navigate";
 
-export function TenantPage({ id, navigate }: { id: number; navigate: (to: string) => void }) {
+const routeApi = getRouteApi("/tenants/$id");
+
+export function TenantPage() {
+  const id = Number(routeApi.useParams().id);
+  const navigate = useGo();
   const app = useApp();
   const tenantQuery = useTenant(id);
   const leasesQuery = useLeases({ tenant_id: id });

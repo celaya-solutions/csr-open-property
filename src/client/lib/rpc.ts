@@ -2,8 +2,8 @@ import { hc } from "hono/client";
 import type { ClientResponse } from "hono/client";
 import type { AppType } from "../../server/index";
 
-// Relative base: Vite proxies /api in development, and in production the
-// rewrite in vercel.json points /api at the Railway server.
+// Relative base: Vite proxies /api in development, and in production the same
+// server that hands back this page answers /api.
 export const rpc = hc<AppType>("/");
 
 /**

@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { App } from "./app";
+import { RouterProvider } from "@tanstack/react-router";
+import { router } from "./router";
 import { installCourseAuth } from "./course-auth";
 import "./styles.css";
 
@@ -19,6 +20,6 @@ const queryClient = new QueryClient({
 installCourseAuth();
 createRoot(document.getElementById("app")!).render(
   <QueryClientProvider client={queryClient}>
-    <App />
+    <RouterProvider router={router} />
   </QueryClientProvider>,
 );

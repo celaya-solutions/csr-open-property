@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LeaseDialog } from "./lease-dialog";
 import type { Lease, LeaseStatus } from "@/types";
+import { useGo } from "@/lib/navigate";
 
 const STATUS_TONE: Record<string, string> = {
   active: "default",
@@ -19,7 +20,8 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: "outline",
 };
 
-export function LeasesPage({ navigate }: { navigate: (to: string) => void }) {
+export function LeasesPage() {
+  const navigate = useGo();
   const app = useApp();
   const { data, isPending: loading } = useLeases();
   const leases: Lease[] = data ?? [];
