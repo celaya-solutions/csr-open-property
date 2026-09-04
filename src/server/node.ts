@@ -3,7 +3,7 @@ import { serve } from "@hono/node-server";
 import { getCookie, setCookie } from "hono/cookie";
 import { Hono } from "hono";
 import app from "./index.js";
-import { get, initDB } from "./db.js";
+import { initDB } from "./db.js";
 
 const port = Number(process.env.PORT || 8787);
 const password = process.env.APP_PASSWORD || "";
@@ -21,9 +21,9 @@ function matchesSession(candidate: string | undefined): boolean {
   return expected.length === received.length && timingSafeEqual(expected, received);
 }
 
-gateway.get("/api/health", async (c) => {
-  const row = await get<{ ok: number }>("SELECT 1 AS ok");
-  return c.json({ ok: row?.ok === 1, database: "sqlite" });
+gateway.get("/api/health", (c) => {
+  initDB().prepare("SELECT 1").get();
+  return c.json({ ok: true, database: "sqlite" });
 });
 
 gateway.post("/api/session", async (c) => {

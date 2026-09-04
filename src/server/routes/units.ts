@@ -1,8 +1,9 @@
+import { and, eq, getTableColumns, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { get, query, run } from "../db";
-import { buildUpdate, intParam, jsonBody } from "./shared";
-import type { Unit } from "../../shared/types";
+import { db } from "../db";
+import { properties, units as unitsTable } from "../schema";
+import { definedFields, intParam, jsonBody } from "./shared";
 
 const UnitInput = z.object({
   property_id: z.number().int(),
@@ -15,62 +16,74 @@ const UnitInput = z.object({
   notes: z.string().optional().nullable(),
 });
 
-const UNIT_SELECT = `
-  SELECT u.*,
-    p.name as property_name,
-    p.color as property_color,
-    p.address as property_address,
-    p.city as property_city,
-    (SELECT l.id FROM leases l WHERE l.unit_id = u.id AND l.status = 'active' ORDER BY l.start_date DESC LIMIT 1) as active_lease_id,
-    (SELECT t.first_name || ' ' || t.last_name FROM leases l LEFT JOIN tenants t ON t.id = l.primary_tenant_id WHERE l.unit_id = u.id AND l.status = 'active' ORDER BY l.start_date DESC LIMIT 1) as active_tenant_name
-  FROM units u
-  LEFT JOIN properties p ON p.id = u.property_id
-`;
+// The unit's newest active lease. Correlated subqueries rather than a join, so
+// a unit with two active leases still returns one row. Written out in SQL:
+// inside a subquery Drizzle drops the table prefix from an interpolated column.
+const latestActiveLease = <T>(column: string) => sql<T>`(
+  SELECT ${sql.raw(column)} FROM leases
+  LEFT JOIN tenants ON tenants.id = leases.primary_tenant_id
+  WHERE leases.unit_id = units.id AND leases.status = 'active'
+  ORDER BY leases.start_date DESC LIMIT 1
+)`;
+
+const unitColumns = {
+  ...getTableColumns(unitsTable),
+  property_name: properties.name,
+  property_color: properties.color,
+  property_address: properties.address,
+  property_city: properties.city,
+  active_lease_id: latestActiveLease<number | null>("leases.id").as("active_lease_id"),
+  active_tenant_name: latestActiveLease<string | null>(
+    "tenants.first_name || ' ' || tenants.last_name",
+  ).as("active_tenant_name"),
+};
+
+const selectUnits = (where?: SQL) => {
+  const q = db()
+    .select(unitColumns)
+    .from(unitsTable)
+    .leftJoin(properties, eq(properties.id, unitsTable.property_id));
+  return where ? q.where(where) : q;
+};
 
 export const units = new Hono()
   .get("/", async (c) => {
     const propertyId = intParam(c.req.query("property_id"));
     const status = c.req.query("status");
-    const where: string[] = [];
-    const params: unknown[] = [];
-    if (propertyId) { where.push("u.property_id = ?"); params.push(propertyId); }
-    if (status) { where.push("u.status = ?"); params.push(status); }
-    const sql = `${UNIT_SELECT}${where.length ? " WHERE " + where.join(" AND ") : ""} ORDER BY p.name, u.name`;
-    const rows = await query<Unit>(sql, params);
+    const filters = [
+      propertyId ? eq(unitsTable.property_id, propertyId) : undefined,
+      status ? eq(unitsTable.status, status as never) : undefined,
+    ].filter(Boolean) as SQL[];
+    const rows = await selectUnits(filters.length ? and(...filters) : undefined)
+      .orderBy(properties.name, unitsTable.name);
     return c.json({ units: rows });
   })
   .get("/:id", async (c) => {
     const id = intParam(c.req.param("id"));
     if (!id) return c.json({ error: "Invalid ID" }, 400);
-    const row = await get<Unit>(`${UNIT_SELECT} WHERE u.id = ?`, [id]);
+    const [row] = await selectUnits(eq(unitsTable.id, id));
     if (!row) return c.json({ error: "Not found" }, 404);
     return c.json({ unit: row });
   })
   .post("/", jsonBody(UnitInput), async (c) => {
-    const d = c.req.valid("json");
-    const result = await run(
-      `INSERT INTO units (property_id, name, bedrooms, bathrooms, sqft, market_rent, status, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [d.property_id, d.name, d.bedrooms ?? 1, d.bathrooms ?? 1, d.sqft ?? null, d.market_rent ?? 0, d.status ?? "vacant", d.notes ?? null],
-    );
-    const row = await get<Unit>(`${UNIT_SELECT} WHERE u.id = ?`, [result.lastInsertRowid]);
-    return c.json({ unit: row! }, 201);
+    const [{ id }] = await db().insert(unitsTable).values(c.req.valid("json")).returning({ id: unitsTable.id });
+    const [row] = await selectUnits(eq(unitsTable.id, id));
+    return c.json({ unit: row }, 201);
   })
   .put("/:id", jsonBody(UnitInput.partial()), async (c) => {
     const id = intParam(c.req.param("id"));
     if (!id) return c.json({ error: "Invalid ID" }, 400);
-    const { sets, params } = buildUpdate(c.req.valid("json"));
-    if (!sets.length) return c.json({ error: "No fields" }, 400);
-    params.push(id);
-    const r = await run(`UPDATE units SET ${sets.join(", ")} WHERE id = ?`, params);
-    if (!r.changes) return c.json({ error: "Not found" }, 404);
-    const row = await get<Unit>(`${UNIT_SELECT} WHERE u.id = ?`, [id]);
-    return c.json({ unit: row! });
+    const fields = definedFields(c.req.valid("json"));
+    if (!fields) return c.json({ error: "No fields" }, 400);
+    const changed = await db().update(unitsTable).set(fields).where(eq(unitsTable.id, id)).returning({ id: unitsTable.id });
+    if (!changed.length) return c.json({ error: "Not found" }, 404);
+    const [row] = await selectUnits(eq(unitsTable.id, id));
+    return c.json({ unit: row });
   })
   .delete("/:id", async (c) => {
     const id = intParam(c.req.param("id"));
     if (!id) return c.json({ error: "Invalid ID" }, 400);
-    const r = await run("DELETE FROM units WHERE id = ?", [id]);
-    if (!r.changes) return c.json({ error: "Not found" }, 404);
+    const gone = await db().delete(unitsTable).where(eq(unitsTable.id, id)).returning({ id: unitsTable.id });
+    if (!gone.length) return c.json({ error: "Not found" }, 404);
     return c.json({ ok: true });
   });

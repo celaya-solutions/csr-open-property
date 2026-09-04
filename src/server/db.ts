@@ -1,8 +1,11 @@
 import Database from "better-sqlite3";
+import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import * as schema from "./schema";
 
 let database: Database.Database | undefined;
+let orm: BetterSQLite3Database<typeof schema> | undefined;
 
 function schemaPath(): string {
   const local = resolve("src/server/schema.sql");
@@ -26,28 +29,12 @@ export function initDB(_bindings?: unknown): Database.Database {
   return database;
 }
 
-function params(values: unknown[]): unknown[] {
-  return values.map((value) => value === undefined ? null : value);
-}
-
-export async function query<T = any>(
-  sql: string,
-  values: unknown[] = [],
-): Promise<T[]> {
-  return initDB().prepare(sql).all(...params(values)) as T[];
-}
-
-export async function get<T = any>(
-  sql: string,
-  values: unknown[] = [],
-): Promise<T | undefined> {
-  return initDB().prepare(sql).get(...params(values)) as T | undefined;
-}
-
-export async function run(
-  sql: string,
-  values: unknown[] = [],
-): Promise<{ changes: number; lastInsertRowid: number | bigint }> {
-  const result = initDB().prepare(sql).run(...params(values));
-  return { changes: result.changes, lastInsertRowid: result.lastInsertRowid };
+/**
+ * The Drizzle handle every route queries through. It is created on first use
+ * so that the process can set `DB_PATH` before the first request (or, in the
+ * tests, before the app module is imported).
+ */
+export function db(): BetterSQLite3Database<typeof schema> {
+  if (!orm) orm = drizzle(initDB(), { schema });
+  return orm;
 }
