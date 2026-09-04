@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { getCookie, setCookie } from "hono/cookie";
 import { Hono } from "hono";
 import app from "./index.js";
@@ -49,7 +50,7 @@ gateway.use("/api/*", async (c, next) => {
   await next();
 });
 
-gateway.all("*", (c) => {
+gateway.all("/api/*", (c) => {
   const bindings = {
     DB: {},
     UPLOADS: {},
@@ -62,6 +63,13 @@ gateway.all("*", (c) => {
   };
   return app.fetch(c.req.raw, bindings as never);
 });
+
+// The built frontend ships with the server, so there is one origin and no
+// proxy hop. `pnpm build` writes dist/; in development Vite serves it instead.
+gateway.use("/assets/*", serveStatic({ root: "./dist" }));
+gateway.get("/icon.svg", serveStatic({ path: "./icon.svg" }));
+// Every other path is a client route: hand back the app shell.
+gateway.get("*", serveStatic({ path: "./dist/index.html" }));
 
 initDB();
 serve({ fetch: gateway.fetch, port }, ({ port: listeningPort }) => {

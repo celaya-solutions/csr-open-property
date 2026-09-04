@@ -16,31 +16,31 @@ The frontend runs through Vite. The Hono API uses `PORT`. SQLite uses `DB_PATH`;
 
 - `pnpm build`
 - `pnpm typecheck`
+- `pnpm test`
 - With the app running: `pnpm smoke`
 - `pnpm db:export -- exports/my-backup.db`
 
-## Railway backend
+## Railway
 
-Create one service from this repository. Add a volume mounted at `/app/data`. Set:
+Create one service from this repository. It serves both the API and the built
+screen, so there is nothing else to deploy. Add a volume mounted at `/app/data`. Set:
 
 - `DB_PATH=/app/data/app.db`
 - `UPLOAD_PATH=/app/data/uploads`
 - `APP_PASSWORD` to a classroom-safe password
 - `SESSION_SECRET` to a new long random value
 
-The app creates its schema at startup because the Railway volume is not present during builds.
+Railway runs `pnpm build` (which writes `dist/`) and then `pnpm start`. The app creates its schema at startup because the Railway volume is not present during builds.
 
-## Vercel frontend
-
-Copy `vercel.example.json` to `vercel.json`. Replace `YOUR-RAILWAY-DOMAIN` with the Railway service domain. Import the repository into Vercel and deploy. Browser calls to `/api/*` stay on the Vercel origin and are rewritten to Railway.
+Open the Railway service domain and the app is there. `/api/*` is the API; every other path is handed the built screen.
 
 ## Safety and current limits
 
 Use fake data only. Never enter customer, tenant, patient, payment, health, or private contact data.
 
-Hosting offers change. As recorded on September 1, 2026, Vercel Hobby documents 200 projects and 50 domains per project. Railway documents a no-card $5 trial for up to 30 days, then $1 monthly free credit; trial volumes may later be removed. Check the linked course lesson before deployment.
+Hosting offers change. As recorded on September 1, 2026, Railway documents a no-card $5 trial for up to 30 days, then $1 monthly free credit; trial volumes may later be removed. Check the linked course lesson before deployment.
 
-Custom domains are optional. Connect a Namecheap domain to Vercel; Vercel continues routing `/api` to Railway.
+Custom domains are optional. Point a Namecheap domain at the Railway service.
 
 ## Celaya Solutions
 
